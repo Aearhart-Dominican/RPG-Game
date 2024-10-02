@@ -54,6 +54,9 @@ class Player():
         self.base_sprite = player_idle
         self.active_sprite = self.base_sprite
         self.cord = py.math.Vector2(( SCREEN_WIDTH // 2 * (MAP_SCALE - 1), SCREEN_HEIGHT // 2 * (MAP_SCALE - 1)))
+        self.true_hitbox = py.rect.Rect(((SCREEN_WIDTH - self.base_sprite.get_width()) // 2, (SCREEN_HEIGHT - self.base_sprite.get_height()) // 2, self.base_sprite.get_width(), self.base_sprite.get_height()))
+        self.hitbox = py.rect.Rect(0,0, int(self.base_sprite.get_width() * .50), int(self.base_sprite.get_height() * .50))
+        self.hitbox.center = self.true_hitbox.center
         self.speed = 5
         self.dest = py.math.Vector2(self.cord[0], self.cord[1])
         self.left = False
@@ -63,6 +66,10 @@ class Player():
         
     def draw(self):
         screen.blit(self.active_sprite, (SCREEN_WIDTH // 2 - self.base_sprite.get_width() // 2, SCREEN_HEIGHT // 2 - self.base_sprite.get_height() // 2))
+
+    def update_hitbox(self):
+        self.true_hitbox = py.rect.Rect(((SCREEN_WIDTH - self.base_sprite.get_width()) // 2, (SCREEN_HEIGHT - self.base_sprite.get_height()) // 2, self.base_sprite.get_width(), self.base_sprite.get_height()))
+        self.hitbox.center = self.true_hitbox.center
 
     def direction(self):
         if event.key == py.K_w:
@@ -118,6 +125,8 @@ class Player():
         if self.move_cord != 0 and self.move_cord > self.speed:
             self.cord[0] += self.speed * (self.dest[0] - self.cord[0]) / self.move_cord 
             self.cord[1] += self.speed * (self.dest[1] - self.cord[1]) / self.move_cord
+        
+        self.update_hitbox()
 
     def reset(self):
         self.cord[1] = SCREEN_HEIGHT // 2 * (MAP_SCALE - 1)
@@ -130,6 +139,9 @@ class Enemy():
         self.base_sprite = player_idle
         self.active_sprite = self.base_sprite
         self.cord = py.math.Vector2((random.randint(MAP_BORDER[1], MAP_BORDER[2] - self.base_sprite.get_width()), random.randint(MAP_BORDER[0], MAP_BORDER[3] - self.base_sprite.get_height())))
+        self.hitbox = py.rect.Rect((self.cord[0] - player.cord[0], self.cord[1] - player.cord[1], self.base_sprite.get_width(), self.base_sprite.get_height()))
+        self.friendly_hitbox = py.rect.Rect((0, 0, self.base_sprite.get_width() // 2, self.base_sprite.get_height() // 2))
+        self.friendly_hitbox.center = self.hitbox.center
         self.spawn_x = self.cord[0]
         self.spawn_y = self.cord[1]
         self.aggro = False
@@ -151,6 +163,8 @@ class Enemy():
         self.forget_timer_max = 100
         self.forget_timer = self.forget_timer_max
         self.flipped = False
+        self.dead = False
+        self.knockback = 15
     
     def flip(self):
         if self.point[0] > self.cord[0] and self.flipped == False:
@@ -190,6 +204,56 @@ class Enemy():
         else:
             self.active_sprite = sprite
 
+    def check_collision(self, target, friendly = False):
+        if target == player:
+            if self.hitbox.colliderect(player.hitbox):
+                self.hit_player()
+        elif friendly:
+            if self.friendly_hitbox.colliderect(target.friendly_hitbox):
+                if target.hitbox[0] > self.friendly_hitbox[0]:
+                    self.apply_force((self.cord[0] - abs(target.hitbox[0] - self.friendly_hitbox[0]), self.cord[1]), 1)
+
+                if target.hitbox[0] < self.friendly_hitbox[0]:
+                    self.apply_force((self.cord[0] + abs(target.hitbox[0] - self.friendly_hitbox[0]), self.cord[1]), 1)
+
+                if target.hitbox[1] < self.friendly_hitbox[1]:
+                    self.apply_force((self.cord[0], self.cord[1] + abs(target.hitbox[1] - self.friendly_hitbox[1])), 1)
+
+                if target.hitbox[1] > self.friendly_hitbox[1]:
+                    self.apply_force((self.cord[0], self.cord[1] - abs(target.hitbox[1] - self.friendly_hitbox[1])), 1)        
+        else:
+            if self.hitbox.colliderect(target.hitbox):
+                if target.hitbox[0] > self.hitbox[0]:
+                    self.apply_force((self.cord[0] - abs(target.hitbox[0] - self.hitbox[0]), self.cord[1]), 1)
+
+                if target.hitbox[0] < self.hitbox[0]:
+                    self.apply_force((self.cord[0] + abs(target.hitbox[0] - self.hitbox[0]), self.cord[1]), 1)
+
+                if target.hitbox[1] < self.hitbox[1]:
+                    self.apply_force((self.cord[0], self.cord[1] + abs(target.hitbox[1] - self.hitbox[1])), 1)
+
+                if target.hitbox[1] > self.hitbox[1]:
+                    self.apply_force((self.cord[0], self.cord[1] - abs(target.hitbox[1] - self.hitbox[1])), 1)            
+
+    def hit_player(self):
+        if player.hitbox[0] > self.hitbox[0]:
+            self.apply_force((self.cord[0] - abs(player.hitbox[0] - self.hitbox[0]), self.cord[1]), self.knockback)
+
+        if player.hitbox[0] < self.hitbox[0]:
+            self.apply_force((self.cord[0] + abs(player.hitbox[0] - self.hitbox[0]), self.cord[1]), self.knockback)
+
+        if player.hitbox[1] < self.hitbox[1]:
+            self.apply_force((self.cord[0], self.cord[1] + abs(player.hitbox[1] - self.hitbox[1])), self.knockback)
+
+        if player.hitbox[1] > self.hitbox[1]:
+            self.apply_force((self.cord[0], self.cord[1] - abs(player.hitbox[1] - self.hitbox[1])), self.knockback)
+
+
+    def update_hitbox(self):
+        self.hitbox = py.rect.Rect((self.cord[0] - player.cord[0], self.cord[1] - player.cord[1], self.base_sprite.get_width(), self.base_sprite.get_height()))
+        self.friendly_hitbox.center = self.hitbox.center
+        self.check_collision(player)
+
     def check_aggro(self):
         if self.forget:
             if self.forget_timer > 0:
@@ -215,6 +279,12 @@ class Enemy():
                 self.change_sprite(skeleton_idle)
             self.wandering = True
             self.aggro = False
+
+    def apply_force(self, point, force):
+        self.move_cord = math.sqrt((self.cord[0] - point[0]) ** 2 + (self.cord[1] - point[1]) ** 2)
+        if self.move_cord != 0 and self.move_cord > self.speed:
+            self.cord[0] += self.speed * force * (point[0] - self.cord[0]) / self.move_cord 
+            self.cord[1] += self.speed * force * (point[1] - self.cord[1]) / self.move_cord
 
     def move(self):
         # print(f"{self.point} \n {self.cord[0]}  {player.cord[0]} \n {self.cord[1]}  {player.cord[1]}")
@@ -254,13 +324,15 @@ class Enemy():
                 case 1:
                     pass
             
+        self.update_hitbox()
+
 class Fighter(Enemy):
     def __init__(self) -> None:
         super().__init__()
         self.base_sprite = skeleton_idle
         self.active_sprite = self.base_sprite
-        # self.aggro_distance = 0
-        # self.aggro_range = 200 * TILE_SIZE
+        self.aggro_distance = 100 * TILE_SIZE
+        self.aggro_range = 200 * TILE_SIZE
 
     # def move(self):
     #     self.cord[0] = 700
@@ -298,7 +370,7 @@ def show_corners():
     py.draw.rect(screen, WHITE, (MAP_BORDER[3] - player.cord[0], MAP_BORDER[2] - player.cord[1], TILE_SIZE, TILE_SIZE))
 
 def gen_enemies():
-    for i in range(1):
+    for i in range(4):
         enemies.append(Fighter())
 
 # Generated Variables
@@ -346,6 +418,14 @@ while running:
 
     for enemy in enemies:
         enemy.move()
+        for other_enemy in enemies:
+            if other_enemy == enemy:
+                break
+            else:
+                enemy.check_collision(other_enemy, True)
+
+        if enemy.dead:
+            enemies.remove(enemy)
 
     py.display.update()
     
