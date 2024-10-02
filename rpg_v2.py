@@ -49,8 +49,9 @@ mapseed = []
 class Player():
 
     def __init__(self):
-        self.cord = py.math.Vector2(( SCREEN_WIDTH // 2 * (MAP_SCALE - 1) - player_idle.get_width() // 2, SCREEN_HEIGHT // 2 * (MAP_SCALE - 1) - player_idle.get_height() // 2))
+        self.cord = py.math.Vector2(( SCREEN_WIDTH // 2 * (MAP_SCALE - 1), SCREEN_HEIGHT // 2 * (MAP_SCALE - 1)))
         self.speed = 5
+        self.dest = py.math.Vector2(self.cord[0], self.cord[1])
         self.left = False
         self.right = False
         self.up = False
@@ -79,28 +80,51 @@ class Player():
         if event.key == py.K_d:
             self.right = False
 
-    def move(self):
+    def set_dest(self):
         if self.up:
-            if self.cord[1] > MAP_BORDER[0] - 350:
-                self.cord[1] -= self.speed
+            if self.dest[1] < MAP_BORDER[0] - 350:
+                self.dest[1] = MAP_BORDER[0] - 350
+            else:
+                self.dest[1] -= self.speed
         if self.down:
-            if self.cord[1] < MAP_BORDER[2] - 350:
-                self.cord[1] += self.speed
+            if self.dest[1] > MAP_BORDER[2] - 350:
+                self.dest[1] = MAP_BORDER[2] - 350
+            else:
+                self.dest[1] += self.speed
         if self.left:
-            if self.cord[0] > MAP_BORDER[1] - 350:
-                self.cord[0] -= self.speed
+            if self.dest[0] < MAP_BORDER[1] - 350:
+                self.dest[0] = MAP_BORDER[1] - 350
+            else:
+                self.dest[0] -= self.speed
         if self.right:
-            if self.cord[0] < MAP_BORDER[3] - 350:
-                self.cord[0] += self.speed
+            if self.dest[0] > MAP_BORDER[3] - 350:
+                self.dest[0] = MAP_BORDER[3] - 350
+            else:
+                self.dest[0] += self.speed
+
+        if self.up == False and self.down == False:
+            self.dest[1] = self.cord[1]
+        if self.left == False and self.right == False:
+            self.dest[0] = self.cord[0]
+
+    def move(self):
+        self.set_dest()
+
+        self.move_cord = math.sqrt((self.cord[0] - self.dest[0]) ** 2 + (self.cord[1] - self.dest[1]) ** 2)
+        if self.move_cord != 0 and self.move_cord > self.speed:
+            self.cord[0] += self.speed * (self.dest[0] - self.cord[0]) / self.move_cord 
+            self.cord[1] += self.speed * (self.dest[1] - self.cord[1]) / self.move_cord
 
     def reset(self):
-        self.cord[1] = SCREEN_HEIGHT // 2 * (MAP_SCALE - 1) - player_idle.get_height() // 2
-        self.cord[0] = SCREEN_WIDTH // 2 * (MAP_SCALE - 1) - player_idle.get_width() // 2
+        self.cord[1] = SCREEN_HEIGHT // 2 * (MAP_SCALE - 1)
+        self.cord[0] = SCREEN_WIDTH // 2 * (MAP_SCALE - 1)
+        self.dest = py.math.Vector2(self.cord[0], self.cord[1])
 
 class Enemy():
 
     def __init__(self) -> None:
-        self.cord = py.math.Vector2((random.randint(MAP_BORDER[1], MAP_BORDER[2]), random.randint(MAP_BORDER[0], MAP_BORDER[3])))
+        self.base_sprite = player_idle
+        self.cord = py.math.Vector2((random.randint(MAP_BORDER[1], MAP_BORDER[2] - self.base_sprite.get_width()), random.randint(MAP_BORDER[0], MAP_BORDER[3] - self.base_sprite.get_height())))
         self.spawn_x = self.cord[0]
         self.spawn_y = self.cord[1]
         self.aggro = False
@@ -112,8 +136,8 @@ class Enemy():
         self.speed = 4
         self.choice = 0
         self.wait = True
-        self.max_wait_time = 100
-        self.min_wait_time = 10
+        self.max_wait_time = 150
+        self.min_wait_time = 50
         self.wait_time = (self.max_wait_time + self.min_wait_time) // 2
         self.wander_range = 5 * TILE_SIZE
         self.aggro_range = 3 * TILE_SIZE
@@ -123,18 +147,26 @@ class Enemy():
         self.forget_timer = self.forget_timer_max
     
     def draw(self):
-        screen.blit(player_idle, (self.cord[0] - player.cord[0], self.cord[1] - player.cord[1]))
+        screen.blit(self.base_sprite, (self.cord[0] - player.cord[0], self.cord[1] - player.cord[1]))
 
     def pick_point(self):
         self.point = py.math.Vector2(self.spawn_x + random.randint(-self.wander_range, self.wander_range), self.spawn_y + random.randint(-self.wander_range, self.wander_range))
         if self.point[1] < MAP_BORDER[0]:
             self.point[1] = MAP_BORDER[0]
-        elif self.point[1] > MAP_BORDER[2]:
-            self.point[1] = MAP_BORDER[2]
+            self.spawn_y = MAP_BORDER[0] + self.wander_range + TILE_SIZE
+            
+        elif self.point[1] > MAP_BORDER[2] - self.base_sprite.get_height():
+            self.point[1] = MAP_BORDER[2] - self.base_sprite.get_height()
+            self.spawn_y = MAP_BORDER[2] - self.wander_range - TILE_SIZE
+            
         if self.point[0] < MAP_BORDER[1]:
             self.point[0] = MAP_BORDER[1]
-        elif self.point[0] > MAP_BORDER[3]:
-            self.point[0] = MAP_BORDER[3]
+            self.spawn_x = MAP_BORDER[1] + self.wander_range + TILE_SIZE
+            
+        elif self.point[0] > MAP_BORDER[3] - self.base_sprite.get_width():
+            self.point[0] = MAP_BORDER[3] - self.base_sprite.get_width()
+            self.spawn_x = MAP_BORDER[3] - self.wander_range - TILE_SIZE
+            
 
     def check_aggro(self):
         if self.forget:
@@ -195,11 +227,12 @@ class Enemy():
                         #self.choice = random.randint(0, 1)
                 case 1:
                     pass
-    
             
 class Fighter(Enemy):
     def __init__(self) -> None:
         super().__init__()
+        # self.aggro_distance = 0
+        # self.aggro_range = 200 * TILE_SIZE
 
     # def move(self):
     #     self.cord[0] = 700
@@ -237,7 +270,7 @@ def show_corners():
     py.draw.rect(screen, WHITE, (MAP_BORDER[3] - player.cord[0], MAP_BORDER[2] - player.cord[1], TILE_SIZE, TILE_SIZE))
 
 def gen_enemies():
-    for i in range(1):
+    for i in range(10):
         enemies.append(Fighter())
 
 # Generated Variables
