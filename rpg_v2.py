@@ -34,6 +34,8 @@ PURPLE = (133, 3, 150)
 
 # Sprites
 player_idle = py.transform.scale(py.image.load('./sprites/player/player_idle.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
+skeleton_idle = py.transform.scale(py.image.load('./sprites/enemies/skeleton.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
+skeleton_angry = py.transform.scale(py.image.load('./sprites/enemies/skeleton_angry.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
 bg_0 = py.transform.scale(py.image.load('./sprites/background/bg_0.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
 bg_1 = py.transform.scale(py.image.load('./sprites/background/bg_1.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
 bg_2 = py.transform.scale(py.image.load('./sprites/background/bg_2.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
@@ -49,6 +51,8 @@ mapseed = []
 class Player():
 
     def __init__(self):
+        self.base_sprite = player_idle
+        self.active_sprite = self.base_sprite
         self.cord = py.math.Vector2(( SCREEN_WIDTH // 2 * (MAP_SCALE - 1), SCREEN_HEIGHT // 2 * (MAP_SCALE - 1)))
         self.speed = 5
         self.dest = py.math.Vector2(self.cord[0], self.cord[1])
@@ -58,7 +62,7 @@ class Player():
         self.down = False
         
     def draw(self):
-        screen.blit(player_idle, (SCREEN_WIDTH // 2 - player_idle.get_width() // 2, SCREEN_HEIGHT // 2 - player_idle.get_height() // 2))
+        screen.blit(self.active_sprite, (SCREEN_WIDTH // 2 - self.base_sprite.get_width() // 2, SCREEN_HEIGHT // 2 - self.base_sprite.get_height() // 2))
 
     def direction(self):
         if event.key == py.K_w:
@@ -82,23 +86,23 @@ class Player():
 
     def set_dest(self):
         if self.up:
-            if self.dest[1] < MAP_BORDER[0] - 350:
-                self.dest[1] = MAP_BORDER[0] - 350
+            if self.dest[1] < MAP_BORDER[0] - 350 + self.base_sprite.get_height() // 2:
+                self.dest[1] = MAP_BORDER[0] - 350 + self.base_sprite.get_height() // 2
             else:
                 self.dest[1] -= self.speed
         if self.down:
-            if self.dest[1] > MAP_BORDER[2] - 350:
-                self.dest[1] = MAP_BORDER[2] - 350
+            if self.dest[1] > MAP_BORDER[2] - 350 - self.base_sprite.get_height() // 2:
+                self.dest[1] = MAP_BORDER[2] - 350 - self.base_sprite.get_height() // 2
             else:
                 self.dest[1] += self.speed
         if self.left:
-            if self.dest[0] < MAP_BORDER[1] - 350:
-                self.dest[0] = MAP_BORDER[1] - 350
+            if self.dest[0] < MAP_BORDER[1] - 350 + self.base_sprite.get_width() // 2:
+                self.dest[0] = MAP_BORDER[1] - 350 + self.base_sprite.get_width() // 2
             else:
                 self.dest[0] -= self.speed
         if self.right:
-            if self.dest[0] > MAP_BORDER[3] - 350:
-                self.dest[0] = MAP_BORDER[3] - 350
+            if self.dest[0] > MAP_BORDER[3] - 350 - self.base_sprite.get_width() // 2:
+                self.dest[0] = MAP_BORDER[3] - 350 - self.base_sprite.get_width() // 2
             else:
                 self.dest[0] += self.speed
 
@@ -124,6 +128,7 @@ class Enemy():
 
     def __init__(self) -> None:
         self.base_sprite = player_idle
+        self.active_sprite = self.base_sprite
         self.cord = py.math.Vector2((random.randint(MAP_BORDER[1], MAP_BORDER[2] - self.base_sprite.get_width()), random.randint(MAP_BORDER[0], MAP_BORDER[3] - self.base_sprite.get_height())))
         self.spawn_x = self.cord[0]
         self.spawn_y = self.cord[1]
@@ -145,9 +150,21 @@ class Enemy():
         self.forget = False
         self.forget_timer_max = 100
         self.forget_timer = self.forget_timer_max
+        self.flipped = False
     
+    def flip(self):
+        if self.point[0] > self.cord[0] and self.flipped == False:
+            self.active_sprite = py.transform.flip(self.active_sprite, True, False)
+            self.flipped = True
+
+        elif self.point[0] < self.cord[0] - self.speed:
+            if self.flipped:
+                self.active_sprite = py.transform.flip(self.active_sprite, True, False)
+                self.flipped = False
+
     def draw(self):
-        screen.blit(self.base_sprite, (self.cord[0] - player.cord[0], self.cord[1] - player.cord[1]))
+        self.flip()
+        screen.blit(self.active_sprite, (self.cord[0] - player.cord[0], self.cord[1] - player.cord[1]))
 
     def pick_point(self):
         self.point = py.math.Vector2(self.spawn_x + random.randint(-self.wander_range, self.wander_range), self.spawn_y + random.randint(-self.wander_range, self.wander_range))
@@ -167,6 +184,11 @@ class Enemy():
             self.point[0] = MAP_BORDER[3] - self.base_sprite.get_width()
             self.spawn_x = MAP_BORDER[3] - self.wander_range - TILE_SIZE
             
+    def change_sprite(self, sprite):
+        if self.flipped:
+            self.active_sprite = py.transform.flip(sprite, True, False)
+        else:
+            self.active_sprite = sprite
 
     def check_aggro(self):
         if self.forget:
@@ -178,15 +200,19 @@ class Enemy():
             if math.sqrt((self.spawn_x - self.cord[0]) ** 2 + (self.spawn_y - self.cord[1]) ** 2) < self.aggro_distance:
                 self.aggro = True
                 self.wandering = False
+                self.change_sprite(skeleton_angry)
             else:
                 self.pick_point()
                 self.aggro = False
                 self.wandering = True
                 self.forget = True
                 self.forget_timer = self.forget_timer_max
+                self.change_sprite(skeleton_idle)
+
         else:
             if self.aggro:
                 self.pick_point()
+                self.change_sprite(skeleton_idle)
             self.wandering = True
             self.aggro = False
 
@@ -197,7 +223,7 @@ class Enemy():
         if self.wandering:
             self.speed = self.wander_speed
         if self.aggro:
-            self.point = py.math.Vector2(player.cord[0] - player_idle.get_width() // 2 + SCREEN_WIDTH // 2, player.cord[1] - player_idle.get_height() // 2 + SCREEN_HEIGHT // 2)
+            self.point = py.math.Vector2(player.cord[0] - self.base_sprite.get_width() // 2 + SCREEN_WIDTH // 2, player.cord[1] - self.base_sprite.get_height() // 2 + SCREEN_HEIGHT // 2)
             self.speed = self.aggro_speed
             self.moving = True
 
@@ -231,6 +257,8 @@ class Enemy():
 class Fighter(Enemy):
     def __init__(self) -> None:
         super().__init__()
+        self.base_sprite = skeleton_idle
+        self.active_sprite = self.base_sprite
         # self.aggro_distance = 0
         # self.aggro_range = 200 * TILE_SIZE
 
@@ -270,7 +298,7 @@ def show_corners():
     py.draw.rect(screen, WHITE, (MAP_BORDER[3] - player.cord[0], MAP_BORDER[2] - player.cord[1], TILE_SIZE, TILE_SIZE))
 
 def gen_enemies():
-    for i in range(10):
+    for i in range(1):
         enemies.append(Fighter())
 
 # Generated Variables
