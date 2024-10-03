@@ -30,13 +30,17 @@ GREEN = (28, 181, 7)
 PURPLE = (133, 3, 150)
 
 # Variables
-
+clicked = False
 
 # Sprites
 player_idle = py.transform.scale(py.image.load('./sprites/player/player_idle.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
 player_health = py.transform.scale(py.image.load('./sprites/player/player_health.png').convert_alpha(), (TILE_SIZE // 2, TILE_SIZE // 2))
+
 skeleton_idle = py.transform.scale(py.image.load('./sprites/enemies/skeleton.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
 skeleton_angry = py.transform.scale(py.image.load('./sprites/enemies/skeleton_angry.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
+
+arrow = py.transform.scale(py.image.load('./sprites/player/player_idle.png').convert_alpha(), (TILE_SIZE // 4, TILE_SIZE // 4))
+
 bg_0 = py.transform.scale(py.image.load('./sprites/background/bg_0.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
 bg_1 = py.transform.scale(py.image.load('./sprites/background/bg_1.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
 bg_2 = py.transform.scale(py.image.load('./sprites/background/bg_2.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
@@ -55,6 +59,7 @@ class Player():
         self.type = "player"
         self.base_sprite = player_idle
         self.active_sprite = self.base_sprite
+        self.projectile_sprite = arrow
         self.cord = py.math.Vector2(( SCREEN_WIDTH // 2 * (MAP_SCALE - 1), SCREEN_HEIGHT // 2 * (MAP_SCALE - 1)))
         self.true_hitbox = py.rect.Rect(((SCREEN_WIDTH - self.base_sprite.get_width()) // 2, (SCREEN_HEIGHT - self.base_sprite.get_height()) // 2, self.base_sprite.get_width(), self.base_sprite.get_height()))
         self.hitbox = py.rect.Rect(0,0, int(self.base_sprite.get_width() * .50), int(self.base_sprite.get_height() * .50))
@@ -66,7 +71,9 @@ class Player():
         self.up = False
         self.down = False
         self.hp = 3
+        self.dmg = 1
         self.dead = False
+        self.projectile_speed = 10
         
     def draw(self):
         screen.blit(self.active_sprite, (SCREEN_WIDTH // 2 - self.base_sprite.get_width() // 2, SCREEN_HEIGHT // 2 - self.base_sprite.get_height() // 2))
@@ -146,12 +153,62 @@ class Player():
             self.hp = 0
             self.dead = True
 
+    def shoot(self, pos):
+        projectiles.append(Projectile((self.cord[0] + 350, self.cord[1] + 350), (pos[0] + self.cord[0], pos[1] + self.cord[1]), self.dmg, self.projectile_speed, "player_projectile", self.projectile_sprite))
+
     def reset(self):
         self.cord[1] = SCREEN_HEIGHT // 2 * (MAP_SCALE - 1)
         self.cord[0] = SCREEN_WIDTH // 2 * (MAP_SCALE - 1)
         self.dest = py.math.Vector2(self.cord[0], self.cord[1])
         self.hp = 3
         self.dead = False
+
+class Projectile():
+
+    def __init__(self, cord = (0, 0), dest = (0, 0), dmg = 1, speed = 1, type = "enemy_projectile", sprite = arrow):
+        self.type = type
+        self.dmg = dmg
+        self.speed = speed
+        self.cord = py.math.Vector2(cord)
+        self.dest = py.math.Vector2(dest)
+        self.sprite = py.transform.rotate(sprite, self.cord.angle_to(self.dest) * 30)
+        self.hitbox = py.rect.Rect((self.cord[0] - player.cord[0], self.cord[1] - player.cord[1], self.sprite.get_width(), self.sprite.get_height()))
+        self.delete = False
+    
+
+    def draw(self):
+        screen.blit(self.sprite, (self.cord[0] - player.cord[0], self.cord[1] - player.cord[1]))
+
+    def move(self):
+        
+        self.move_cord = math.sqrt((self.cord[0] - self.dest[0]) ** 2 + (self.cord[1] - self.dest[1]) ** 2)
+        if self.move_cord != 0 and self.move_cord > self.speed:
+            self.cord[0] += self.speed * (self.dest[0] - self.cord[0]) / self.move_cord 
+            self.cord[1] += self.speed * (self.dest[1] - self.cord[1]) / self.move_cord
+        else:
+            self.delete = True
+
+        self.update_hitbox()
+
+        # if self.type == "player_projectile":
+        #     self.check_collision(enemy)
+        # else:
+        #     self.check_collision(player)
+
+    def hit(self):
+        self.delete = True
+
+    def check_collision(self, target):
+        if self.hitbox.colliderect(target.hitbox):
+            target.hit(self.dmg)
+            self.delete = True
+            print("Hit")
+
+
+    def update_hitbox(self):
+        self.hitbox[0] = (self.cord[0] - player.cord[0])
+        self.hitbox[1] = (self.cord[1] - player.cord[1])
+
 
 class Enemy():
 
@@ -235,7 +292,22 @@ class Enemy():
             if self.hitbox.colliderect(player.hitbox):
                 self.hit_player()
         elif target.type == "player_projectile":
-            pass
+            if self.hitbox.colliderect(target.hitbox):
+                self.hit(target.dmg)
+                target.hit()
+                if target.hitbox[0] > self.hitbox[0]:
+                    self.apply_force((self.cord[0] - abs(target.hitbox[0] - self.hitbox[0]), self.cord[1]), self.knockback)
+
+                if target.hitbox[0] < self.hitbox[0]:
+                    self.apply_force((self.cord[0] + abs(target.hitbox[0] - self.hitbox[0]), self.cord[1]), self.knockback)
+
+                if target.hitbox[1] < self.hitbox[1]:
+                    self.apply_force((self.cord[0], self.cord[1] + abs(target.hitbox[1] - self.hitbox[1])), self.knockback)
+
+                if target.hitbox[1] > self.hitbox[1]:
+                    self.apply_force((self.cord[0], self.cord[1] - abs(target.hitbox[1] - self.hitbox[1])), self.knockback)            
+
+
         elif friendly:
             if self.friendly_hitbox.colliderect(target.friendly_hitbox):
                 if target.hitbox[0] > self.friendly_hitbox[0]:
@@ -263,6 +335,9 @@ class Enemy():
                 if target.hitbox[1] > self.hitbox[1]:
                     self.apply_force((self.cord[0], self.cord[1] - abs(target.hitbox[1] - self.hitbox[1])), 1)            
 
+    def hit(self, dmg):
+        self.hp -= dmg
+
     def hit_player(self):
         if player.hitbox[0] > self.hitbox[0]:
             self.apply_force((self.cord[0] - abs(player.hitbox[0] - self.hitbox[0]), self.cord[1]), self.knockback)
@@ -278,15 +353,16 @@ class Enemy():
         
         
         player.hit(self.dmg)
-        self.hp -= 1
-        if self.hp <= 0:
-            self.dead = True
         self.stuned = True
 
     def update_hitbox(self):
+        if self.hp <= 0:
+            self.dead = True
         self.hitbox = py.rect.Rect((self.cord[0] - player.cord[0], self.cord[1] - player.cord[1], self.base_sprite.get_width(), self.base_sprite.get_height()))
         self.friendly_hitbox.center = self.hitbox.center
         self.check_collision(player)
+        for projectile in projectiles:
+            self.check_collision(projectile)
 
     def check_aggro(self):
         if self.forget:
@@ -469,13 +545,14 @@ def draw_ui():
         pass
 
 def gen_enemies():
-    for i in range(1):
+    for i in range(5):
         enemies.append(Fighter())
 
 # Generated Variables
 player = Player()
 
 ground_loot = []
+projectiles = []
 enemies = []
 gen_enemies()
 
@@ -505,6 +582,15 @@ while running:
         if event.type == py.QUIT:
             running = False
 
+        if event.type == py.MOUSEBUTTONDOWN and clicked == False:
+            clicked = True
+        if event.type == py.MOUSEBUTTONUP and clicked == True:
+            if clicked:
+                clicked = False
+                pos = py.mouse.get_pos()
+                player.shoot(pos)
+                
+
         if event.type == py.KEYDOWN:
             player.direction()
 
@@ -515,6 +601,8 @@ while running:
                 player.reset()
                 mapseed = []
                 enemies = []
+                projectiles = []
+                ground_loot = []
                 gen_enemies()
                 render_background()
         
@@ -522,6 +610,13 @@ while running:
             player.stop_direction()
 
     player.move()
+
+    if len(projectiles) > 0:
+        for projectile in projectiles:
+            projectile.draw()
+            projectile.move()
+            if projectile.delete:
+                projectiles.remove(projectile)
 
     for enemy in enemies:
         enemy.move()
