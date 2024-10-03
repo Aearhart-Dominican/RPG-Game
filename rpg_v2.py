@@ -34,6 +34,7 @@ PURPLE = (133, 3, 150)
 
 # Sprites
 player_idle = py.transform.scale(py.image.load('./sprites/player/player_idle.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
+player_health = py.transform.scale(py.image.load('./sprites/player/player_health.png').convert_alpha(), (TILE_SIZE // 2, TILE_SIZE // 2))
 skeleton_idle = py.transform.scale(py.image.load('./sprites/enemies/skeleton.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
 skeleton_angry = py.transform.scale(py.image.load('./sprites/enemies/skeleton_angry.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
 bg_0 = py.transform.scale(py.image.load('./sprites/background/bg_0.png').convert_alpha(), (TILE_SIZE, TILE_SIZE))
@@ -51,6 +52,7 @@ mapseed = []
 class Player():
 
     def __init__(self):
+        self.type = "player"
         self.base_sprite = player_idle
         self.active_sprite = self.base_sprite
         self.cord = py.math.Vector2(( SCREEN_WIDTH // 2 * (MAP_SCALE - 1), SCREEN_HEIGHT // 2 * (MAP_SCALE - 1)))
@@ -63,6 +65,8 @@ class Player():
         self.right = False
         self.up = False
         self.down = False
+        self.hp = 3
+        self.dead = False
         
     def draw(self):
         screen.blit(self.active_sprite, (SCREEN_WIDTH // 2 - self.base_sprite.get_width() // 2, SCREEN_HEIGHT // 2 - self.base_sprite.get_height() // 2))
@@ -70,6 +74,10 @@ class Player():
     def update_hitbox(self):
         self.true_hitbox = py.rect.Rect(((SCREEN_WIDTH - self.base_sprite.get_width()) // 2, (SCREEN_HEIGHT - self.base_sprite.get_height()) // 2, self.base_sprite.get_width(), self.base_sprite.get_height()))
         self.hitbox.center = self.true_hitbox.center
+        if self.hp < 1:
+            self.active_sprite = skeleton_idle
+        else:
+            self.active_sprite = player_idle
 
     def direction(self):
         if event.key == py.K_w:
@@ -128,14 +136,27 @@ class Player():
         
         self.update_hitbox()
 
+    def hit(self, dmg):
+
+        if self.hp > dmg:
+            self.hp -= dmg
+            self.dead = False
+            
+        else:
+            self.hp = 0
+            self.dead = True
+
     def reset(self):
         self.cord[1] = SCREEN_HEIGHT // 2 * (MAP_SCALE - 1)
         self.cord[0] = SCREEN_WIDTH // 2 * (MAP_SCALE - 1)
         self.dest = py.math.Vector2(self.cord[0], self.cord[1])
+        self.hp = 3
+        self.dead = False
 
 class Enemy():
 
     def __init__(self) -> None:
+        self.type = "enemy"
         self.base_sprite = player_idle
         self.active_sprite = self.base_sprite
         self.cord = py.math.Vector2((random.randint(MAP_BORDER[1], MAP_BORDER[2] - self.base_sprite.get_width()), random.randint(MAP_BORDER[0], MAP_BORDER[3] - self.base_sprite.get_height())))
@@ -155,16 +176,21 @@ class Enemy():
         self.wait = True
         self.max_wait_time = 150
         self.min_wait_time = 50
+        self.stuned = False
+        self.stun_time = 15
+        self.stun_timer = self.stun_time
         self.wait_time = (self.max_wait_time + self.min_wait_time) // 2
-        self.wander_range = 5 * TILE_SIZE
+        self.wander_range = 4 * TILE_SIZE
         self.aggro_range = 3 * TILE_SIZE
         self.aggro_distance = 5 * TILE_SIZE
         self.forget = False
-        self.forget_timer_max = 100
+        self.forget_timer_max = 30
         self.forget_timer = self.forget_timer_max
         self.flipped = False
         self.dead = False
-        self.knockback = 15
+        self.knockback = 10
+        self.hp = 3
+        self.dmg = 1
     
     def flip(self):
         if self.point[0] > self.cord[0] and self.flipped == False:
@@ -205,9 +231,11 @@ class Enemy():
             self.active_sprite = sprite
 
     def check_collision(self, target, friendly = False):
-        if target == player:
+        if target.type == "player":
             if self.hitbox.colliderect(player.hitbox):
                 self.hit_player()
+        elif target.type == "player_projectile":
+            pass
         elif friendly:
             if self.friendly_hitbox.colliderect(target.friendly_hitbox):
                 if target.hitbox[0] > self.friendly_hitbox[0]:
@@ -247,7 +275,13 @@ class Enemy():
 
         if player.hitbox[1] > self.hitbox[1]:
             self.apply_force((self.cord[0], self.cord[1] - abs(player.hitbox[1] - self.hitbox[1])), self.knockback)
-
+        
+        
+        player.hit(self.dmg)
+        self.hp -= 1
+        if self.hp <= 0:
+            self.dead = True
+        self.stuned = True
 
     def update_hitbox(self):
         self.hitbox = py.rect.Rect((self.cord[0] - player.cord[0], self.cord[1] - player.cord[1], self.base_sprite.get_width(), self.base_sprite.get_height()))
@@ -297,6 +331,15 @@ class Enemy():
             self.speed = self.aggro_speed
             self.moving = True
 
+        if self.stuned:
+            if self.stun_timer > 0:
+                self.point[0] = self.cord[0]
+                self.point[1] = self.cord[1]
+                self.stun_timer -= 1
+            else:
+                self.stuned = False
+                self.stun_timer = self.stun_time
+
         if self.moving:
             
             self.move_cord = math.sqrt((self.cord[0] - self.point[0]) ** 2 + (self.cord[1] - self.point[1]) ** 2)
@@ -325,19 +368,68 @@ class Enemy():
                     pass
             
         self.update_hitbox()
+    
+    def death_action(self):
+        for i in range(random.randint(0, 3)):
+            ground_loot.append(Health((self.cord[0] + random.randint(0, TILE_SIZE), self.cord[1] + random.randint(0, TILE_SIZE))))
 
 class Fighter(Enemy):
     def __init__(self) -> None:
         super().__init__()
         self.base_sprite = skeleton_idle
         self.active_sprite = self.base_sprite
-        self.aggro_distance = 100 * TILE_SIZE
-        self.aggro_range = 200 * TILE_SIZE
+        # self.aggro_distance = 100 * TILE_SIZE
+        # self.aggro_range = 200 * TILE_SIZE
 
     # def move(self):
     #     self.cord[0] = 700
     #     self.cord[1] = 700
     #     print(f"{self.point} \n {self.cord[0]}  {player.cord[0]} \n {self.cord[1]}  {player.cord[1]}")
+
+class Loot():
+    def __init__(self) -> None:
+        self.cord = py.math.Vector2(0, 0)
+        self.delete = False
+        self.base_sprite = player_idle
+        self.active_sprite = self.base_sprite
+        self.hitbox = py.rect.Rect((self.cord[0] - player.cord[0], self.cord[1] - player.cord[1], self.base_sprite.get_width(), self.base_sprite.get_height()))
+        self.pickup_range = 2 * TILE_SIZE
+        self.speed = 1
+    
+    def pickup_action(self):
+        self.delete = True
+
+    def pickup(self):
+        
+        if abs(self.cord[0] - player.cord[0] - 350) < self.pickup_range and abs(self.cord[1] - player.cord[1] - 350) < self.pickup_range:
+            self.point = py.math.Vector2(player.cord[0] - self.base_sprite.get_width() // 2 + SCREEN_WIDTH // 2, player.cord[1] - self.base_sprite.get_height() // 2 + SCREEN_HEIGHT // 2)
+            
+            self.move_cord = math.sqrt((self.cord[0] - self.point[0]) ** 2 + (self.cord[1] - self.point[1]) ** 2)
+            if self.move_cord != 0 and self.move_cord > self.speed:
+                self.cord[0] += self.speed * (self.point[0] - self.cord[0]) / self.move_cord 
+                self.cord[1] += self.speed * (self.point[1] - self.cord[1]) / self.move_cord
+
+        if player.true_hitbox.colliderect(self.hitbox):
+            self.pickup_action()
+
+    def draw(self):
+        screen.blit(self.active_sprite, (self.cord[0] - player.cord[0], self.cord[1] - player.cord[1]))
+
+    def update(self):
+        self.hitbox = py.rect.Rect((self.cord[0] - player.cord[0], self.cord[1] - player.cord[1], self.base_sprite.get_width(), self.base_sprite.get_height()))
+        self.active_sprite = self.base_sprite
+        self.pickup()
+    
+class Health(Loot):
+
+    def __init__(self, cord = py.math.Vector2(0, 0)):
+        super().__init__()
+        self.cord = py.math.Vector2(cord)
+        self.base_sprite = py.transform.scale(player_health, (player_health.get_width(), player_health.get_height()))
+    
+    def pickup_action(self):
+        self.delete = True
+        player.hp += 1
 
 # Functions
 def bg_tile_chance():
@@ -369,13 +461,21 @@ def show_corners():
     py.draw.rect(screen, WHITE, (MAP_BORDER[3] - player.cord[0], MAP_BORDER[0] - player.cord[1], TILE_SIZE, TILE_SIZE))
     py.draw.rect(screen, WHITE, (MAP_BORDER[3] - player.cord[0], MAP_BORDER[2] - player.cord[1], TILE_SIZE, TILE_SIZE))
 
+def draw_ui():
+    if player.hp > 0:
+        for i in range(player.hp):
+            screen.blit(player_health, (SCREEN_WIDTH - int(player_health.get_width() * (i + 1) * 1.5), player_health.get_height()))
+    else:
+        pass
+
 def gen_enemies():
-    for i in range(4):
+    for i in range(1):
         enemies.append(Fighter())
 
 # Generated Variables
 player = Player()
 
+ground_loot = []
 enemies = []
 gen_enemies()
 
@@ -390,6 +490,13 @@ while running:
 
     draw_screen()
     player.draw()
+
+    if len(ground_loot) > 0:
+        for loot in ground_loot:
+            loot.update()
+            loot.draw()
+            if loot.delete:
+                ground_loot.remove(loot)
 
     for enemy in enemies:
         enemy.draw()
@@ -425,7 +532,10 @@ while running:
                 enemy.check_collision(other_enemy, True)
 
         if enemy.dead:
+            enemy.death_action()
             enemies.remove(enemy)
+
+    draw_ui()
 
     py.display.update()
     
