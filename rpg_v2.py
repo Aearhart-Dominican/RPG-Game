@@ -17,7 +17,7 @@ py.display.set_caption("RPG Game")
 TILE_SIZE = 50
 ROWS = SCREEN_HEIGHT // TILE_SIZE
 COLUMNS = SCREEN_WIDTH // TILE_SIZE
-MAP_SCALE = 1
+MAP_SCALE = 4
 
 # UP, LEFT, DOWN, RIGHT
 MAP_BORDER = [ TILE_SIZE * COLUMNS // 2 * - 1 + 350, TILE_SIZE * ROWS // 2 * - 1 + 350, (TILE_SIZE * COLUMNS // 2 * - 1) + (TILE_SIZE * COLUMNS * MAP_SCALE) + 350, (TILE_SIZE * ROWS // 2 * - 1) + (TILE_SIZE * ROWS * MAP_SCALE) + 350]
@@ -545,7 +545,7 @@ def draw_ui():
         pass
 
 def gen_enemies():
-    for i in range(5):
+    for i in range(30):
         enemies.append(Fighter())
 
 # Generated Variables
